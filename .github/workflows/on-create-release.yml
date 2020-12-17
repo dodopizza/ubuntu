@@ -1,0 +1,63 @@
+name: Create new release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_tag:
+        description: '1.2.3'
+        required: true
+jobs:
+  build:
+    name: Release
+    runs-on: ubuntu-latest
+    env:
+      ubuntu_repo_main: dodopizza/ubuntu
+      ubuntu_repo_dev:  dodopizza/ubuntu-dev
+    steps:
+
+      - name: Login to hub.docker
+        run: |
+          echo ${{ secrets.DOCKERHUB_PASSWORD }} | docker login --username=${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
+
+      - name: Retag dev image and push to prepare release draft
+        run: |
+          branch_short_sha=$( echo ${{ github.ref }} | sha1sum | cut -c1-6 )
+          docker pull ${ubuntu_repo_dev}:${branch_short_sha}
+          for image_tag in \
+            "${ubuntu_repo_main}:$( echo ${{ github.event.inputs.version_tag }} | cut -d . -f  1 )"  \
+            "${ubuntu_repo_main}:$( echo ${{ github.event.inputs.version_tag }} | cut -d . -f -2 )"  \
+            "${ubuntu_repo_main}:$( echo ${{ github.event.inputs.version_tag }} )"
+          do
+            docker tag ${ubuntu_repo_dev}:${branch_short_sha} ${image_tag}
+            docker push ${image_tag}
+          done
+
+      - name: Get apps version and draft release messsage
+        id: image_app_versions
+        run: |
+          function set-multiline-output(){
+            local output_key=${1}
+            local output_val="${2}"
+            echo "${output_val}"
+            output_val="${output_val//'%'/'%25'}"
+            output_val="${output_val//$'\n'/'%0A'}"
+            output_val="${output_val//$'\r'/'%0D'}"
+            echo "::set-output name=${output_key}::${output_val}"
+          }
+          branch_short_sha=$( echo ${{ github.ref }} | sha1sum | cut -c1-6 )
+          apps_version_info=$( docker run --rm ${ubuntu_repo_dev}:${branch_short_sha} bash -c '/version-info.sh' )
+          set-multiline-output apps_version_info \
+          "Image: ${ubuntu_repo_main}:${{ github.event.inputs.version_tag }}
+          **Utils preinstalled:**
+          ${apps_version_info}"
+
+      - name: Create draft release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.event.inputs.version_tag }}
+          release_name: ${{ env.ubuntu_repo_main }}:${{ github.event.inputs.version_tag }}
+          draft: false
+          prerelease: false
+          body: ${{ steps.image_app_versions.outputs.apps_version_info }}

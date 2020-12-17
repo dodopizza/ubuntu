@@ -1,0 +1,46 @@
+name: Build
+
+on:
+  pull_request:
+  push:
+    branches:    
+        - '*'
+
+jobs:
+  build:
+    name: Build image
+    runs-on: ubuntu-latest
+    env:
+      ubuntu_repo_main: dodopizza/ubuntu
+      ubuntu_repo_dev:  dodopizza/ubuntu-dev
+    steps:
+
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Login to hub.docker
+        run: |
+          echo ${{ secrets.DOCKERHUB_PASSWORD }} | docker login --username=${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
+
+      - name: Build image and check preinstalled app versions
+        run: |
+          docker build --rm --tag ubuntu_local .
+          docker run --rm ubuntu_local bash -c '/version-info.sh'
+
+      - name: Push to dodopizza/ubuntu-dev:<branch_short_sha>
+        run: |
+          branch_short_sha=$( echo ${{ github.ref }} | sha1sum | cut -c1-6 )
+          docker tag  ubuntu_local ${ubuntu_repo_dev}:${branch_short_sha}
+          docker push ${ubuntu_repo_dev}:${branch_short_sha}
+
+          echo
+          echo "Dev image tag: ${ubuntu_repo_dev}:${branch_short_sha}"
+          echo
+
+      - name: Push to dodopizza/ubuntu:latest and dodopizza/ubuntu-dev:latest
+        if: github.ref == 'refs/heads/latest'
+        run: |
+          docker tag  ubuntu_local ${ubuntu_repo_main}:latest
+          docker tag  ubuntu_local ${ubuntu_repo_dev}:latest
+          docker push ${ubuntu_repo_main}:latest
+          docker push ${ubuntu_repo_dev}:latest
