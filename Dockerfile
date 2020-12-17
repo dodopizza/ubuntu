@@ -5,16 +5,6 @@ RUN apk -U add build-base git \
     && export LDFLAGS=-static \
     && make
 
-FROM ubuntu:20.04 AS innotop_builder
-WORKDIR /workdir
-RUN apt-get update \
-    && apt-get install -y git make \
-    && git clone https://github.com/innotop/innotop.git \
-    && cd innotop/ \
-    && perl Makefile.PL \
-    && make install \
-    && innotop --version
-
 FROM ubuntu:20.04
 
 LABEL maintainer="Vitaly Uvarov <v.uvarov@dodopizza.com>"
@@ -146,6 +136,16 @@ RUN echo "deb http://pkg.scaleft.com/deb linux main" | tee -a /etc/apt/sources.l
 
 ## redis-cli
 COPY bin/redis-cli /usr/bin/redis-cli
+
+## innotop
+RUN cd /tmp/ \
+    && apt-get update \
+    && apt-get install -y git make libdbi-perl \
+    && git clone https://github.com/innotop/innotop.git \
+    && cd innotop/ \
+    && perl Makefile.PL \
+    && make install \
+    && innotop --version
 
 ## scaleft user forwarding from host machine to container
 COPY  scripts/docker-entrypoint.sh /
